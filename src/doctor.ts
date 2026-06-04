@@ -278,10 +278,9 @@ async function checkUiComponents(dir: string): Promise<{ checks: Check[]; fixabl
     const componentName = file.replace(".tsx", "");
 
     const hasBrokenImport =
-      content.includes('from "@/lib/utils"') ||
+      /from "@[^"]*\/utils"/.test(content) ||
       content.includes('from "src/utils"') ||
-      content.includes('from "@/utils"') ||
-      /from "@\/components\/ui\//.test(content);
+      /from "@[^"]*\/components\/ui\//.test(content);
 
     checks.push({
       label: `src/${file} — cn import path`,
@@ -315,10 +314,9 @@ async function applyFixes(dir: string, fixable: FixableIssue[]): Promise<number>
     if (issue.type === "broken-cn-import") {
       const content = await fs.readFile(issue.file, "utf-8").catch(() => "");
       const fixed = content
-        .replace(/from "@\/lib\/utils"/g, 'from "./utils"')
+        .replace(/from "@[^"]*\/utils"/g, 'from "./utils"')
         .replace(/from "src\/utils"/g, 'from "./utils"')
-        .replace(/from "@\/utils"/g, 'from "./utils"')
-        .replace(/from "@\/components\/ui\/([^"]+)"/g, 'from "./$1"');
+        .replace(/from "@[^"]*\/components\/ui\/([^"]+)"/g, 'from "./$1"');
       await fs.writeFile(issue.file, fixed, "utf-8");
       count++;
     } else if (issue.type === "missing-barrel-export") {
@@ -398,6 +396,19 @@ export async function doctor(cwd: string, opts: { checkTypes?: boolean; fix?: bo
     const fixed = await applyFixes(cwd, fixable);
     s.stop(`${fixed} issue${fixed === 1 ? "" : "s"} fixed`);
     totalFailures = Math.max(0, totalFailures - fixed);
+  } else if (!opts.fix && fixable.length > 0 && totalFailures > 0) {
+    const shouldFix = await p.confirm({
+      message: `${fixable.length} issue${fixable.length === 1 ? "" : "s"} can be auto-fixed. Fix them now?`,
+      initialValue: true,
+    });
+
+    if (!p.isCancel(shouldFix) && shouldFix) {
+      const s = p.spinner();
+      s.start("Applying fixes");
+      const fixed = await applyFixes(cwd, fixable);
+      s.stop(`${fixed} issue${fixed === 1 ? "" : "s"} fixed`);
+      totalFailures = Math.max(0, totalFailures - fixed);
+    }
   }
 
   if (totalFailures === 0) {
@@ -405,7 +416,6 @@ export async function doctor(cwd: string, opts: { checkTypes?: boolean; fix?: bo
   } else {
     p.outro(
       pc.red(`${totalFailures} issue${totalFailures === 1 ? "" : "s"} found.`) +
-        (!opts.fix && fixable.length > 0 ? pc.dim("  Run monokit doctor --fix to auto-fix what's possible.") : "") +
         (!opts.checkTypes ? pc.dim("  Run monokit doctor --types to also check TypeScript.") : ""),
     );
     process.exit(1);
