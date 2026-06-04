@@ -106,6 +106,12 @@ pnpm --package=monokit-cli dlx monokit <command>
 npm install -g monokit-cli
 ```
 
+To update to the latest version at any time:
+
+```bash
+npm install -g monokit-cli@latest
+```
+
 ---
 
 ### `monokit app`
