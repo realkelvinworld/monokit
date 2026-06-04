@@ -280,7 +280,8 @@ async function checkUiComponents(dir: string): Promise<{ checks: Check[]; fixabl
     const hasBrokenImport =
       /from "@[^"]*\/utils"/.test(content) ||
       content.includes('from "src/utils"') ||
-      /from "@[^"]*\/components\/ui\//.test(content);
+      /from "@[^"]*\/components\/ui\//.test(content) ||
+      /from "src\/(?!utils)[^"]+"/.test(content);
 
     checks.push({
       label: `src/${file} — cn import path`,
@@ -316,7 +317,8 @@ async function applyFixes(dir: string, fixable: FixableIssue[]): Promise<number>
       const fixed = content
         .replace(/from "@[^"]*\/utils"/g, 'from "./utils"')
         .replace(/from "src\/utils"/g, 'from "./utils"')
-        .replace(/from "@[^"]*\/components\/ui\/([^"]+)"/g, 'from "./$1"');
+        .replace(/from "@[^"]*\/components\/ui\/([^"]+)"/g, 'from "./$1"')
+        .replace(/from "src\/([^"]+)"/g, 'from "./$1"');
       await fs.writeFile(issue.file, fixed, "utf-8");
       count++;
     } else if (issue.type === "missing-barrel-export") {

@@ -122,7 +122,8 @@ async function fixCnImport(uiDir: string, componentName: string): Promise<void> 
   const fixed = content
     .replace(/from "@[^"]*\/utils"/g, 'from "./utils"')
     .replace(/from "src\/utils"/g, 'from "./utils"')
-    .replace(/from "@[^"]*\/components\/ui\/([^"]+)"/g, 'from "./$1"');
+    .replace(/from "@[^"]*\/components\/ui\/([^"]+)"/g, 'from "./$1"')
+    .replace(/from "src\/([^"]+)"/g, 'from "./$1"');
 
   await fs.writeFile(componentFile, fixed, "utf-8");
 }
