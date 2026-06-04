@@ -1,15 +1,15 @@
-# create-monokit
+# monokit-cli
 
 Scaffold and manage a production-ready Turborepo monorepo with Next.js, Vite, Tailwind CSS v4, and shadcn/ui — in one command.
 
 ## Quick Start
 
 ```bash
-pnpm dlx create-monokit
+pnpm dlx monokit-cli
 # or
-bunx create-monokit
+bunx monokit-cli
 # or
-npx create-monokit
+npx monokit-cli
 ```
 
 This runs the interactive scaffolder and sets up a full monorepo with your chosen apps, shared packages, and Tailwind + shadcn/ui wired across everything.

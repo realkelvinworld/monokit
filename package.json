@@ -1,6 +1,6 @@
 {
   "name": "monokit-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Scaffold and manage a Turborepo monorepo with Next.js, Vite, Tailwind v4, and shadcn/ui",
   "keywords": [
     "turborepo",
@@ -14,7 +14,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "create-monokit": "dist/index.js",
+    "monokit-cli": "dist/index.js",
     "monokit": "dist/monokit.js"
   },
   "files": [
