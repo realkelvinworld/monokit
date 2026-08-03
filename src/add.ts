@@ -16,6 +16,7 @@ import {
 } from "./utils/apps.js";
 import { detectProjectPackageManager, pmInstall, type PackageManager } from "./utils/pm.js";
 import { mergeJson } from "./utils/files.js";
+import { getWorkspaceNameError } from "./utils/workspace-name.js";
 
 type ShadcnMode = "shared" | "per-app" | "no";
 
@@ -53,7 +54,7 @@ export async function add(cwd: string): Promise<void> {
         p.text({
           message: `${results.type === "next" ? "Next.js" : "Vite"} app name?`,
           placeholder: results.type === "next" ? "web" : "dashboard",
-          validate: (v) => (!v ? "Name is required" : undefined),
+          validate: getWorkspaceNameError,
         }),
       nextSrcDir: ({ results }) => {
         if (results.type !== "next") return;

@@ -45,6 +45,25 @@ If you need a blank slate without Tailwind or shadcn, or you're working outside 
 
 ---
 
+## Requirements
+
+Monokit requires **Node.js 22.12.0 or newer**. New repositories scaffolded by Monokit declare the same minimum version so the CLI, Next.js, Vite, and testing tools share one supported runtime baseline.
+
+Upgrading the global CLI does not modify existing monorepos. Users upgrading from a Node.js 18-compatible Monokit release should upgrade Node.js first, then install the new CLI:
+
+```bash
+npm install -g monokit-cli@latest
+monokit -v
+```
+
+To restore the final legacy release if needed:
+
+```bash
+npm install -g monokit-cli@0.1.5
+```
+
+---
+
 ## Quick Start
 
 ```bash
@@ -63,6 +82,7 @@ This launches an interactive scaffolder. You pick your apps (Next.js, Vite, or b
 
 ```text
 my-monorepo/
+├── .git/               # One Git repository for the complete monorepo
 ├── apps/
 │   ├── client/          # Next.js (App Router) — port 3000
 │   └── dashboard/       # Vite + React — port 3001
@@ -75,6 +95,8 @@ my-monorepo/
 ├── .prettierrc
 └── pnpm-workspace.yaml  # (or workspaces field for other PMs)
 ```
+
+Monokit initializes the repository on the `main` branch. Generated files remain unstaged and uncommitted so you can review them before creating the first commit.
 
 Every app comes pre-wired:
 

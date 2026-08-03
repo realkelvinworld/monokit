@@ -1,3 +1,5 @@
+import { SUPPORTED_NODE_RANGE } from "../utils/node-version.js";
+
 export const turboJson = {
   $schema: "https://turborepo.dev/schema.json",
   ui: "tui",
@@ -119,7 +121,7 @@ export const rootPackageJson = (
       typescript: "5.9.2",
     },
     engines: {
-      node: ">=18",
+      node: SUPPORTED_NODE_RANGE,
     },
   };
 };

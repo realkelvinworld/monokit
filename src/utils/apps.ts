@@ -1,7 +1,30 @@
 import { join } from "path";
 import fs from "fs-extra";
+
 import { mergeJson, replaceInFile, writeFile, writeJson } from "./files.js";
+import { assertGeneratedAppTargetAvailable, removeGeneratedAppGitMetadata } from "./git.js";
 import { type PackageManager, pmCreate, pmCreateNonInteractive, pmDlx, workspaceDep } from "./pm.js";
+
+export function getNextAppCreateArgs(
+  appName: string,
+  useSrcDir: boolean,
+  pm: PackageManager,
+): string[] {
+  return [
+    "next-app@latest",
+    `apps/${appName}`,
+    "--typescript",
+    "--eslint",
+    "--tailwind",
+    useSrcDir ? "--src-dir" : "--no-src-dir",
+    "--app",
+    "--turbopack",
+    "--import-alias",
+    "@/*",
+    `--use-${pm}`,
+    "--disable-git",
+  ];
+}
 
 export async function scaffoldNextApp(
   projectDir: string,
@@ -10,24 +33,13 @@ export async function scaffoldNextApp(
   pm: PackageManager = "pnpm",
   port = 3000,
 ): Promise<void> {
+  await assertGeneratedAppTargetAvailable(projectDir, appName);
+
   // --use-${pm} forces create-next-app to use the chosen PM regardless of how this CLI was invoked
-  await pmCreate(
-    pm,
-    [
-      "next-app@latest",
-      `apps/${appName}`,
-      "--typescript",
-      "--eslint",
-      "--tailwind",
-      useSrcDir ? "--src-dir" : "--no-src-dir",
-      "--app",
-      "--turbopack",
-      "--import-alias",
-      "@/*",
-      `--use-${pm}`,
-    ],
-    projectDir,
-  );
+  await pmCreate(pm, getNextAppCreateArgs(appName, useSrcDir, pm), projectDir);
+
+  // This app was created by the command above, so cleanup cannot affect a pre-existing repository.
+  await removeGeneratedAppGitMetadata(projectDir, appName);
 
   // create-next-app v16 creates its own pnpm-workspace.yaml inside the app — remove it
   // or Next.js will find two workspace files and fail to determine the root correctly.
@@ -74,11 +86,16 @@ export async function scaffoldViteApp(
   pm: PackageManager = "pnpm",
   port = 3001,
 ): Promise<void> {
+  await assertGeneratedAppTargetAvailable(projectDir, appName);
+
   await pmCreateNonInteractive(
     pm,
     ["vite@latest", `apps/${appName}`, "--template", "react-ts"],
     projectDir,
   );
+
+  // Keep the same single-root Git invariant if another app generator changes its defaults.
+  await removeGeneratedAppGitMetadata(projectDir, appName);
 
   // Workspace deps (@repo/*) are added separately after shadcn init.
   await mergeJson(projectDir, `apps/${appName}/package.json`, {
