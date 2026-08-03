@@ -37,6 +37,10 @@ Upgrade Node.js using your preferred version manager, then retry.
 
 The process exits with a non-zero status.
 
+Existing Monokit installations do not update automatically. Installing a newer global version replaces only the CLI package and does not migrate or rewrite existing monorepos. Because npm treats `engines` as advisory unless `engine-strict` is enabled, the runtime preflight must remain dependency-free and execute before the rest of the CLI is imported.
+
+The unsupported-version message includes `npm install -g monokit-cli@0.1.5` as a recovery path for users who cannot upgrade Node.js immediately. The Node.js requirement will ship as a breaking `0.2.0` release, while `0.1.5` remains the legacy Node.js 18-compatible release.
+
 ## Implementation Boundaries
 
 The change includes:
@@ -44,7 +48,7 @@ The change includes:
 - updating Monokit's published `engines.node` requirement;
 - updating the generated root package template;
 - adding a small dependency-free Node.js version utility;
-- calling the preflight from both `create-monokit` and `monokit` entry points;
+- using dependency-free bootstraps for both `create-monokit` and `monokit`, with command modules loaded only after the preflight passes;
 - documenting the requirement in the README;
 - testing version comparison at the boundary and representative supported and unsupported versions.
 

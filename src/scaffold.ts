@@ -12,6 +12,7 @@ import {
   wireViteCss,
 } from "./utils/apps.js";
 import { writeFile, writeJson } from "./utils/files.js";
+import { initializeGitRepository } from "./utils/git.js";
 import { type PackageManager, detectPackageManager, detectPackageManagerField, pmInstall, workspaceDep } from "./utils/pm.js";
 import {
   eslintBase,
@@ -166,6 +167,11 @@ export async function scaffold(cwd: string): Promise<void> {
     },
   });
   s.stop("Project structure created");
+
+  const gitInitialization = await initializeGitRepository(projectDir);
+  if (!gitInitialization.initialized) {
+    p.log.warn(gitInitialization.warning);
+  }
 
   s.start("Setting up shared packages");
   await writeJson(cwd, `${options.name}/packages/eslint-config/package.json`, eslintConfigPackageJson);
