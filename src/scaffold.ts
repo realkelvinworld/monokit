@@ -14,6 +14,7 @@ import {
 import { writeFile, writeJson } from "./utils/files.js";
 import { initializeGitRepository } from "./utils/git.js";
 import { type PackageManager, detectPackageManager, detectPackageManagerField, pmInstall, workspaceDep } from "./utils/pm.js";
+import { getWorkspaceNameError } from "./utils/workspace-name.js";
 import {
   eslintBase,
   eslintConfigPackageJson,
@@ -61,7 +62,7 @@ export async function scaffold(cwd: string): Promise<void> {
         p.text({
           message: "Project name?",
           placeholder: "my-project",
-          validate: (v) => (!v ? "Name is required" : undefined),
+          validate: getWorkspaceNameError,
         }),
       apps: () =>
         p.multiselect({
@@ -77,7 +78,7 @@ export async function scaffold(cwd: string): Promise<void> {
         return p.text({
           message: "Next.js app name?",
           placeholder: "web",
-          validate: (v) => (!v ? "Name is required" : undefined),
+          validate: getWorkspaceNameError,
         });
       },
       nextSrcDir: ({ results }) => {
@@ -89,7 +90,7 @@ export async function scaffold(cwd: string): Promise<void> {
         return p.text({
           message: "Vite app name?",
           placeholder: "dashboard",
-          validate: (v) => (!v ? "Name is required" : undefined),
+          validate: getWorkspaceNameError,
         });
       },
       shadcn: () =>
