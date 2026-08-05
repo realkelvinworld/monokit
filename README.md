@@ -138,7 +138,7 @@ npm install -g monokit-cli@latest
 
 ### `monokit app`
 
-Add a new app to an existing monorepo. Prompts for type (Next.js or Vite), name, port, and whether to set up shadcn/ui. Automatically wires all workspace dependencies.
+Add a new app to an existing monorepo. Prompts for type (Next.js or Vite), name, and whether to set up shadcn/ui. Automatically wires all workspace dependencies.
 
 ```bash
 monokit app
@@ -293,13 +293,6 @@ monokit currently supports **Next.js** and **Vite + React**. More frameworks are
 - Expo (React Native)
 
 Have a framework you'd like to see? [Open an issue](https://github.com/realkelvinworld/monokit/issues).
-
----
-
-## Requirements
-
-- Node.js >= 18
-- One of: pnpm, bun, yarn, or npm
 
 ---
 
