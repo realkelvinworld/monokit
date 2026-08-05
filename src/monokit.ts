@@ -7,9 +7,11 @@ import pc from "picocolors";
 import { add } from "./add.js";
 import { addComponent } from "./add-component.js";
 import { doctor } from "./doctor.js";
+import { e2eCommand } from "./e2e-command.js";
 import { install } from "./install.js";
 import { list } from "./list.js";
 import { removeComponent } from "./remove-component.js";
+import { testCommand } from "./test-command.js";
 import { uninstall } from "./uninstall.js";
 import { update } from "./update.js";
 import { isMonorepo } from "./utils/detect.js";
@@ -40,6 +42,8 @@ ${pc.bold("Commands")}
   ${pc.cyan("update")} [package]         Update an npm package to latest (or a specific version)
   ${pc.cyan("list")}                     List all apps and packages in the monorepo
   ${pc.cyan("doctor")}                   Check monorepo health (--fix to auto-fix, --types for TypeScript)
+  ${pc.cyan("test")} [init]              Run unit tests, or scaffold vitest in a workspace
+  ${pc.cyan("e2e")} [init]              Run Playwright e2e tests, or scaffold Playwright at repo root
 
 ${pc.bold("Options")}
   ${pc.cyan("-h")}, ${pc.cyan("--help")}             Show this help message
@@ -56,10 +60,15 @@ ${pc.bold("Examples")}
   ${pc.dim("$")} monokit list
   ${pc.dim("$")} monokit doctor --fix
   ${pc.dim("$")} monokit doctor --types
+  ${pc.dim("$")} monokit test init --app web
+  ${pc.dim("$")} monokit test --app web
+  ${pc.dim("$")} monokit test --all
+  ${pc.dim("$")} monokit e2e init
+  ${pc.dim("$")} monokit e2e
 `);
 }
 
-async function main() {
+async function main(): Promise<void> {
   const cwd = process.cwd();
 
   // Handle global flags before any monorepo check
@@ -121,6 +130,16 @@ async function main() {
     return;
   }
 
+  if (command === "test") {
+    await testCommand(cwd, rest);
+    return;
+  }
+
+  if (command === "e2e") {
+    await e2eCommand(cwd, rest);
+    return;
+  }
+
   // Unknown command — show help
   console.error(pc.red(`Unknown command: ${command}\n`));
   const version = await getVersion();
@@ -128,7 +147,7 @@ async function main() {
   process.exit(1);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

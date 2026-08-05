@@ -28,6 +28,8 @@ Setting up a Turborepo monorepo from scratch is tedious. The official `create-tu
 | Copy workspace deps by hand | Auto-wired via `@repo/*` packages |
 | No safety net after setup | `monokit doctor` audits everything |
 | Manual installs per workspace | `monokit install` routes to the right place |
+| Configure vitest per app by hand | `monokit test init` scaffolds it in seconds |
+| Figure out Playwright setup yourself | `monokit e2e init` wires it at the repo root |
 
 ---
 
@@ -134,6 +136,15 @@ monokit add button --shared     # adds to packages/ui
 monokit add button --app client # adds to apps/client
 ```
 
+**Third-party shadcn registries** (like [Magic UI](https://magicui.design), [Origin UI](https://originui.com), etc.) work the same way — pass the registry component name directly:
+
+```bash
+monokit add @magicui/dot-pattern
+monokit add @magicui/dot-pattern --shared
+```
+
+Under the hood, monokit passes the component name straight to `shadcn@latest add`, so any registry that shadcn supports is automatically supported here too.
+
 ---
 
 ### `monokit remove <component>`
@@ -229,6 +240,84 @@ Auto-fixable issues:
 
 - Wrong `cn` import paths in `packages/ui` components (e.g. `@/lib/utils` → `./utils`)
 - Missing barrel exports in `packages/ui/src/index.ts`
+
+---
+
+### `monokit test init`
+
+Scaffold [Vitest](https://vitest.dev) in a workspace — installs packages, writes a `vitest.config.ts` tuned for your app type (Next.js or Vite), adds `test`, `test:watch`, and `test:coverage` scripts to the workspace `package.json`, and drops a sample test to verify everything works.
+
+```bash
+monokit test init                 # prompts which workspace
+monokit test init --app client    # scaffold in apps/client
+monokit test init --shared        # scaffold in packages/ui
+```
+
+After running this, your workspace has:
+
+```text
+apps/client/
+├── vitest.config.ts
+└── src/
+    └── __tests__/
+        └── example.test.ts
+```
+
+---
+
+### `monokit test`
+
+Run unit tests in a workspace. Prompts for the workspace if no flag is given. Passes any extra arguments through to vitest.
+
+```bash
+monokit test                        # prompts which workspace
+monokit test --app client           # run tests in apps/client
+monokit test --shared               # run tests in packages/ui
+monokit test --all                  # turbo run test across all workspaces
+monokit test --app client -- --watch      # watch mode
+monokit test --app client -- --coverage   # with coverage
+```
+
+> **Note:** Run `monokit test init` in a workspace first if no test script exists yet.
+
+---
+
+### `monokit e2e init`
+
+Scaffold [Playwright](https://playwright.dev) at the repo root — installs `@playwright/test`, downloads the Chromium browser, writes a `playwright.config.ts`, creates a `tests/e2e/` folder with a starter spec, and adds `e2e`, `e2e:ui`, and `e2e:report` scripts to the root `package.json`.
+
+```bash
+monokit e2e init
+```
+
+After running this, your repo root has:
+
+```text
+playwright.config.ts
+tests/
+└── e2e/
+    └── example.spec.ts
+```
+
+By default the config points to `http://localhost:3000`. Override it at runtime:
+
+```bash
+BASE_URL=http://localhost:3001 monokit e2e
+```
+
+---
+
+### `monokit e2e`
+
+Run your Playwright test suite. Any arguments are passed through to `playwright test`.
+
+```bash
+monokit e2e                    # run all specs
+monokit e2e --ui               # open the Playwright UI runner
+monokit e2e tests/e2e/login    # run a specific spec file
+```
+
+> **Note:** Your app must be running before you invoke this — Playwright tests against a live server.
 
 ---
 
