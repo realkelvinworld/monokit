@@ -76,7 +76,7 @@ export async function runMonokit(): Promise<void> {
 
   if (!isMonorepo(cwd)) {
     console.error(pc.red("No monorepo detected.") + " Run this command from your project root.");
-    console.error(pc.dim('Hint: use "pnpm dlx create-monokit" to scaffold a new monorepo.'));
+    console.error(pc.dim('Hint: use "pnpm dlx monokit-cli" to scaffold a new monorepo.'));
     process.exit(1);
   }
 

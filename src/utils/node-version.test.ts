@@ -52,7 +52,7 @@ describe("Node.js runtime support", () => {
     };
     const generatedPackage = rootPackageJson("example");
 
-    assert.equal(monokitPackage.version, "0.2.1");
+    assert.equal(monokitPackage.version, "0.2.2");
     assert.equal(monokitPackage.engines?.node, SUPPORTED_NODE_RANGE);
     assert.equal(generatedPackage.engines.node, SUPPORTED_NODE_RANGE);
   });
