@@ -4,10 +4,19 @@ import { join } from "path";
 import pc from "picocolors";
 import * as p from "@clack/prompts";
 
+import { readMonokitConfig } from "./utils/monokit-config.js";
+import { listShadcnPrimitiveDependencies } from "./utils/shadcn-config.js";
+import {
+  findSharedShadcnIssues,
+  findSharedUiPrimitiveIssues,
+  inspectSharedUiPrimitiveImports,
+} from "./utils/shadcn-project.js";
+
 interface Check {
   label: string;
   pass: boolean;
   hint?: string;
+  warning?: boolean;
 }
 
 type FixableIssue =
@@ -64,6 +73,10 @@ function printSection(title: string, checks: Check[]): number {
   for (const c of checks) {
     if (c.pass) {
       console.log(`  ${pc.green("✓")}  ${c.label}`);
+    } else if (c.warning) {
+      console.log(
+        `  ${pc.yellow("!")}  ${pc.yellow(c.label)}${c.hint ? pc.dim(`  →  ${c.hint}`) : ""}`,
+      );
     } else {
       console.log(
         `  ${pc.red("✗")}  ${pc.red(c.label)}${c.hint ? pc.dim(`  →  ${c.hint}`) : ""}`,
@@ -92,7 +105,24 @@ async function checkRoot(dir: string, apps: AppInfo[]): Promise<Check[]> {
     { label: "turbo.json", pass: await exists(dir, "turbo.json") },
     { label: ".gitignore", pass: await exists(dir, ".gitignore") },
     { label: ".prettierrc", pass: await exists(dir, ".prettierrc") },
+    {
+      label: ".monokit.json ownership metadata",
+      pass: (await readMonokitConfig(dir)) !== null,
+      hint: "run monokit upgrade --check to inspect the required migration",
+    },
   ];
+  const projectConfig = await readMonokitConfig(dir);
+  if (projectConfig) {
+    const detectedAppNames = new Set(apps.map((app) => app.name));
+    const configuredAppNames = new Set(Object.keys(projectConfig.shadcn.apps));
+    checks.push({
+      label: ".monokit.json covers every detected app",
+      pass:
+        apps.every((app) => configuredAppNames.has(app.name)) &&
+        [...configuredAppNames].every((appName) => detectedAppNames.has(appName)),
+      hint: "run monokit upgrade to classify missing or stale app ownership entries",
+    });
+  }
 
   // Workspace config depends on PM
   if (pm === "pnpm") {
@@ -128,10 +158,11 @@ async function checkRoot(dir: string, apps: AppInfo[]): Promise<Check[]> {
 }
 
 async function checkUi(dir: string): Promise<Check[]> {
-  return [
+  const projectConfig = await readMonokitConfig(dir);
+  const hasSharedShadcn = Object.values(projectConfig?.shadcn.apps ?? {}).includes("shared");
+  const checks: Check[] = [
     { label: "package.json", pass: await exists(dir, "packages/ui/package.json") },
     { label: "tsconfig.json", pass: await exists(dir, "packages/ui/tsconfig.json") },
-    { label: "components.json", pass: await exists(dir, "packages/ui/components.json") },
     { label: "src/index.ts", pass: await exists(dir, "packages/ui/src/index.ts") },
     {
       label: "src/utils.ts exports cn()",
@@ -139,6 +170,92 @@ async function checkUi(dir: string): Promise<Check[]> {
       hint: "packages/ui/src/utils.ts must export a cn() helper using clsx + tailwind-merge",
     },
   ];
+  if (hasSharedShadcn) {
+    checks.splice(2, 0, {
+      label: "components.json",
+      pass: await exists(dir, "packages/ui/components.json"),
+    });
+  }
+  return checks;
+}
+
+async function checkShadcnSynchronization(dir: string): Promise<Check[]> {
+  const projectConfig = await readMonokitConfig(dir);
+  if (!projectConfig) return [];
+
+  const sharedApps = Object.entries(projectConfig.shadcn.apps)
+    .filter(([, mode]) => mode === "shared")
+    .map(([appName]) => appName);
+  const checks: Check[] = [];
+  for (const [appName, mode] of Object.entries(projectConfig.shadcn.apps)) {
+    if (mode !== "per-app") continue;
+    checks.push({
+      label: `apps/${appName} has its per-app shadcn configuration`,
+      pass: await exists(dir, `apps/${appName}/components.json`),
+      hint: `apps/${appName}/components.json is required for per-app ownership`,
+    });
+  }
+  if (sharedApps.length === 0) return checks;
+
+  const drift = await findSharedShadcnIssues(dir);
+  const primitiveIssues = await findSharedUiPrimitiveIssues(dir);
+  const primitiveImports = await inspectSharedUiPrimitiveImports(dir);
+  checks.push(...sharedApps.map((appName) => {
+    const issue = drift.find((candidate) => candidate.appName === appName);
+    return {
+      label: `apps/${appName} matches the shared shadcn design`,
+      pass: !issue,
+      hint: issue
+        ? `drifted fields: ${issue.fields.join(", ")} — run monokit upgrade --check`
+        : undefined,
+    };
+  }));
+
+  checks.push({
+    label: "packages/ui primitive dependencies match its shadcn style",
+    pass: primitiveIssues.length === 0,
+    hint:
+      primitiveIssues.length > 0
+        ? `conflicting packages: ${primitiveIssues.join(", ")} — run monokit upgrade --check`
+        : undefined,
+  });
+  checks.push({
+    label: "packages/ui source imports match its shadcn style",
+    pass: primitiveImports.mismatchedPackages.length === 0,
+    hint:
+      primitiveImports.mismatchedPackages.length > 0
+        ? `conflicting imports: ${primitiveImports.mismatchedPackages.join(", ")}`
+        : undefined,
+  });
+  checks.push({
+    label: "packages/ui does not mix primitive libraries",
+    pass: !primitiveImports.mixed,
+    hint: primitiveImports.mixed
+      ? `found: ${primitiveImports.importedPrimitives.join(", ")}`
+      : undefined,
+  });
+  checks.push({
+    label: "packages/ui directly declares imported primitive packages",
+    pass: primitiveImports.missingPackages.length === 0,
+    hint:
+      primitiveImports.missingPackages.length > 0
+        ? `missing: ${primitiveImports.missingPackages.join(", ")}`
+        : undefined,
+  });
+
+  for (const appName of sharedApps) {
+    const packageJson = await readJson(dir, `apps/${appName}/package.json`);
+    const appPrimitivePackages = listShadcnPrimitiveDependencies(packageJson);
+    if (appPrimitivePackages.length === 0) continue;
+    checks.push({
+      label: `apps/${appName} still declares shared primitive packages`,
+      pass: false,
+      warning: true,
+      hint: `${appPrimitivePackages.join(", ")} can be reviewed for cleanup if the app has no local components`,
+    });
+  }
+
+  return checks;
 }
 
 async function checkTailwindConfig(dir: string): Promise<Check[]> {
@@ -366,6 +483,11 @@ export async function doctor(cwd: string, opts: { checkTypes?: boolean; fix?: bo
   totalFailures += printSection("Root", await checkRoot(cwd, apps));
   totalFailures += printSection("packages/ui", await checkUi(cwd));
 
+  const shadcnChecks = await checkShadcnSynchronization(cwd);
+  if (shadcnChecks.length > 0) {
+    totalFailures += printSection("shadcn synchronization", shadcnChecks);
+  }
+
   const { checks: uiComponentChecks, fixable } = await checkUiComponents(cwd);
   if (uiComponentChecks.length > 0) {
     totalFailures += printSection("packages/ui components", uiComponentChecks);
@@ -398,19 +520,6 @@ export async function doctor(cwd: string, opts: { checkTypes?: boolean; fix?: bo
     const fixed = await applyFixes(cwd, fixable);
     s.stop(`${fixed} issue${fixed === 1 ? "" : "s"} fixed`);
     totalFailures = Math.max(0, totalFailures - fixed);
-  } else if (!opts.fix && fixable.length > 0 && totalFailures > 0) {
-    const shouldFix = await p.confirm({
-      message: `${fixable.length} issue${fixable.length === 1 ? "" : "s"} can be auto-fixed. Fix them now?`,
-      initialValue: true,
-    });
-
-    if (!p.isCancel(shouldFix) && shouldFix) {
-      const s = p.spinner();
-      s.start("Applying fixes");
-      const fixed = await applyFixes(cwd, fixable);
-      s.stop(`${fixed} issue${fixed === 1 ? "" : "s"} fixed`);
-      totalFailures = Math.max(0, totalFailures - fixed);
-    }
   }
 
   if (totalFailures === 0) {

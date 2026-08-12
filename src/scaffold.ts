@@ -1,4 +1,3 @@
-import { join } from "path";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 
@@ -13,7 +12,9 @@ import {
 } from "./utils/apps.js";
 import { writeFile, writeJson } from "./utils/files.js";
 import { initializeGitRepository } from "./utils/git.js";
+import { createMonokitConfig, writeMonokitConfig } from "./utils/monokit-config.js";
 import { type PackageManager, detectPackageManager, detectPackageManagerField, pmInstall, workspaceDep } from "./utils/pm.js";
+import { type ShadcnConfig } from "./utils/shadcn-config.js";
 import { getWorkspaceNameError } from "./utils/workspace-name.js";
 import {
   eslintBase,
@@ -27,7 +28,6 @@ import {
   tsConfigPackageJson,
   tsConfigReactLibrary,
   tsConfigVite,
-  uiComponentsJson,
   uiIndex,
   uiPackageJson,
   uiTsConfig,
@@ -167,6 +167,10 @@ export async function scaffold(cwd: string): Promise<void> {
       "packages/tailwind-config/globals.css": ["**"],
     },
   });
+  await writeMonokitConfig(
+    projectDir,
+    createMonokitConfig(appNames, shadcnMode === "no" ? "none" : shadcnMode),
+  );
   s.stop("Project structure created");
 
   const gitInitialization = await initializeGitRepository(projectDir);
@@ -183,7 +187,6 @@ export async function scaffold(cwd: string): Promise<void> {
   await writeFile(cwd, `${options.name}/packages/tailwind-config/globals.css`, tailwindConfigCss);
   await writeJson(cwd, `${options.name}/packages/ui/package.json`, uiPackageJson(workspaceDep(pm)));
   await writeJson(cwd, `${options.name}/packages/ui/tsconfig.json`, uiTsConfig);
-  await writeJson(cwd, `${options.name}/packages/ui/components.json`, uiComponentsJson);
   await writeFile(cwd, `${options.name}/packages/ui/src/utils.ts`, uiUtils);
   await writeFile(cwd, `${options.name}/packages/ui/src/index.ts`, uiIndex);
   await writeJson(cwd, `${options.name}/packages/typescript-config/package.json`, tsConfigPackageJson);
@@ -212,8 +215,7 @@ export async function scaffold(cwd: string): Promise<void> {
   s.stop("Dependencies installed");
 
   // --- shadcn setup ---
-  let shadcnConfig: Record<string, unknown> | undefined;
-  let shadcnSourceDir: string | undefined;
+  let shadcnConfig: ShadcnConfig | undefined;
 
   if (apps.includes("next")) {
     if (shadcnMode !== "no") {
@@ -227,9 +229,6 @@ export async function scaffold(cwd: string): Promise<void> {
         useSrcDir,
         pm,
       });
-      if (shadcnMode === "shared") {
-        shadcnSourceDir = join(projectDir, "apps", nextAppName);
-      }
     } else {
       await wireNextCss(projectDir, nextAppName, useSrcDir);
     }
@@ -245,7 +244,6 @@ export async function scaffold(cwd: string): Promise<void> {
       shadcnConfig = await initShadcnVite(projectDir, viteAppName, {
         shared: isShared,
         config: isShared ? shadcnConfig : undefined,
-        sourceAppDir: isShared ? shadcnSourceDir : undefined,
         pm,
       });
     } else {

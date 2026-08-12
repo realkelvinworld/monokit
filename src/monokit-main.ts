@@ -11,6 +11,7 @@ import { list } from "./list.js";
 import { removeComponent } from "./remove-component.js";
 import { uninstall } from "./uninstall.js";
 import { update } from "./update.js";
+import { upgrade } from "./upgrade.js";
 import { isMonorepo } from "./utils/detect.js";
 
 const [, , command, ...rest] = process.argv;
@@ -37,6 +38,7 @@ ${pc.bold("Commands")}
   ${pc.cyan("install")} [package]        Install an npm package into any workspace
   ${pc.cyan("uninstall")} [package]      Remove an npm package from any workspace
   ${pc.cyan("update")} [package]         Update an npm package to latest (or a specific version)
+  ${pc.cyan("upgrade")}                  Upgrade Monokit project structure (--check for a read-only plan)
   ${pc.cyan("list")}                     List all apps and packages in the monorepo
   ${pc.cyan("doctor")}                   Check monorepo health (--fix to auto-fix, --types for TypeScript)
 
@@ -52,6 +54,7 @@ ${pc.bold("Examples")}
   ${pc.dim("$")} monokit uninstall lucide-react
   ${pc.dim("$")} monokit update zod
   ${pc.dim("$")} monokit update zod@3.22.0
+  ${pc.dim("$")} monokit upgrade --check
   ${pc.dim("$")} monokit list
   ${pc.dim("$")} monokit doctor --fix
   ${pc.dim("$")} monokit doctor --types
@@ -76,7 +79,7 @@ export async function runMonokit(): Promise<void> {
 
   if (!isMonorepo(cwd)) {
     console.error(pc.red("No monorepo detected.") + " Run this command from your project root.");
-    console.error(pc.dim('Hint: use "pnpm dlx create-monokit" to scaffold a new monorepo.'));
+    console.error(pc.dim('Hint: use "pnpm dlx monokit-cli" to scaffold a new monorepo.'));
     process.exit(1);
   }
 
@@ -107,6 +110,11 @@ export async function runMonokit(): Promise<void> {
 
   if (command === "update") {
     await update(cwd, rest);
+    return;
+  }
+
+  if (command === "upgrade") {
+    await upgrade(cwd, { check: rest.includes("--check") });
     return;
   }
 

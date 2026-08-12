@@ -8,6 +8,7 @@ import { execa } from "execa";
 import {
   assertGeneratedAppTargetAvailable,
   initializeGitRepository,
+  isGitWorkingTreeClean,
   removeGeneratedAppGitMetadata,
 } from "./git.js";
 import { getWorkspaceNameError } from "./workspace-name.js";
@@ -114,5 +115,21 @@ describe("generated repository Git behavior", () => {
 
     assert.equal(result.initialized, false);
     assert.match(result.warning ?? "", /git init -b main/);
+  });
+
+  it("detects whether a generated repository has uncommitted work", async () => {
+    const projectDir = await createTemporaryDirectory();
+    await initializeGitRepository(projectDir);
+    await writeFile(join(projectDir, "tracked.txt"), "initial\n");
+    await execa("git", ["add", "tracked.txt"], { cwd: projectDir });
+    await execa(
+      "git",
+      ["-c", "user.name=Monokit Test", "-c", "user.email=test@monokit.local", "commit", "-m", "initial"],
+      { cwd: projectDir },
+    );
+
+    assert.equal(await isGitWorkingTreeClean(projectDir), true);
+    await writeFile(join(projectDir, "tracked.txt"), "changed\n");
+    assert.equal(await isGitWorkingTreeClean(projectDir), false);
   });
 });

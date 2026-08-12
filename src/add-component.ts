@@ -3,7 +3,17 @@ import fs from "fs-extra";
 import { join } from "path";
 import pc from "picocolors";
 
+import {
+  getAppComponentCandidates,
+  getShadcnAddArgs,
+} from "./utils/component-overwrite.js";
+import { readMonokitConfig } from "./utils/monokit-config.js";
 import { detectProjectPackageManager, pmDlx } from "./utils/pm.js";
+import { ensureSharedUiPrimitiveDependencies } from "./utils/shadcn-dependencies.js";
+import {
+  findSharedShadcnIssues,
+  readSharedShadcnConfig,
+} from "./utils/shadcn-project.js";
 
 export async function addComponent(cwd: string, args: string[]): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" monokit add ")));
@@ -64,6 +74,42 @@ export async function addComponent(cwd: string, args: string[]): Promise<void> {
     }
   }
 
+  const projectConfig = await readMonokitConfig(cwd);
+  const appUsesSharedDesign =
+    destination === "app" && appName
+      ? projectConfig?.shadcn.apps[appName] === "shared"
+      : false;
+
+  if (destination === "shared" || appUsesSharedDesign) {
+    if (destination === "shared" && !projectConfig) {
+      p.cancel(
+        "Monokit ownership metadata is missing. Run monokit upgrade --check before adding shared components.",
+      );
+      process.exit(1);
+    }
+
+    const sharedConfig = await readSharedShadcnConfig(cwd);
+    if (!sharedConfig) {
+      p.cancel(
+        "Shared shadcn configuration is missing. Run monokit upgrade --check before adding components.",
+      );
+      process.exit(1);
+    }
+
+    const issues = (await findSharedShadcnIssues(cwd)).filter(
+      (issue) => destination === "shared" || issue.appName === appName,
+    );
+    if (issues.length > 0) {
+      const details = issues
+        .map((issue) => `apps/${issue.appName}: ${issue.fields.join(", ")}`)
+        .join("\n");
+      p.cancel(
+        `Shared shadcn configuration has drifted:\n${details}\nRun monokit upgrade --check before adding components.`,
+      );
+      process.exit(1);
+    }
+  }
+
   const s = p.spinner();
 
   if (destination === "shared") {
@@ -74,8 +120,12 @@ export async function addComponent(cwd: string, args: string[]): Promise<void> {
       process.exit(1);
     }
 
+    const componentPath = join(uiDir, "src", `${componentName}.tsx`);
+    const overwrite = await confirmComponentOverwrite(componentPath, componentName);
+
     s.start(`Adding ${componentName} to packages/ui`);
-    await pmDlx(pm, ["shadcn@latest", "add", componentName, "--yes", "--overwrite"], uiDir);
+    await pmDlx(pm, getShadcnAddArgs(componentName, overwrite), uiDir);
+    await ensureSharedUiPrimitiveDependencies(cwd, pm);
     s.stop(`${componentName} added`);
 
     s.start("Fixing import paths");
@@ -93,12 +143,36 @@ export async function addComponent(cwd: string, args: string[]): Promise<void> {
       process.exit(1);
     }
 
+    const existingPath = getAppComponentCandidates(appDir, componentName).find((path) =>
+      fs.existsSync(path),
+    );
+    const overwrite = existingPath
+      ? await confirmComponentOverwrite(existingPath, componentName)
+      : false;
+
     s.start(`Adding ${componentName} to apps/${appName}`);
-    await pmDlx(pm, ["shadcn@latest", "add", componentName, "--yes", "--overwrite"], appDir);
+    await pmDlx(pm, getShadcnAddArgs(componentName, overwrite), appDir);
     s.stop(`${componentName} added to apps/${appName}`);
   }
 
   p.outro(pc.green("Done!"));
+}
+
+async function confirmComponentOverwrite(
+  componentPath: string,
+  componentName: string,
+): Promise<boolean> {
+  if (!fs.existsSync(componentPath)) return false;
+
+  const confirmed = await p.confirm({
+    message: `${componentName} already exists and may contain custom changes. Overwrite it?`,
+    initialValue: false,
+  });
+  if (p.isCancel(confirmed) || !confirmed) {
+    p.cancel("Cancelled. Existing component was not changed.");
+    process.exit(0);
+  }
+  return true;
 }
 
 async function detectApps(cwd: string): Promise<string[]> {
