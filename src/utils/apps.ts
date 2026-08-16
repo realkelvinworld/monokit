@@ -4,6 +4,27 @@ import fs from "fs-extra";
 import { mergeJson, replaceInFile, writeFile, writeJson } from "./files.js";
 import { assertGeneratedAppTargetAvailable, removeGeneratedAppGitMetadata } from "./git.js";
 import { type PackageManager, pmCreate, pmCreateNonInteractive, pmDlx, workspaceDep } from "./pm.js";
+import {
+  type ShadcnConfig,
+  projectShadcnConfig,
+} from "./shadcn-config.js";
+import { ensureSharedUiPrimitiveDependencies } from "./shadcn-dependencies.js";
+
+const appShadcnAliases = {
+  components: "@/components",
+  utils: "@/lib/utils",
+  ui: "@/components/ui",
+  lib: "@/lib",
+  hooks: "@/hooks",
+};
+
+const sharedUiShadcnAliases = {
+  components: "src",
+  utils: "src/utils",
+  ui: "src",
+  lib: "src",
+  hooks: "src/hooks",
+};
 
 export function getNextAppCreateArgs(
   appName: string,
@@ -206,20 +227,25 @@ export async function initShadcnInteractive(
   appDir: string,
   cssFile: string,
   pm: PackageManager = "pnpm",
-): Promise<Record<string, unknown>> {
+): Promise<ShadcnConfig> {
   await pmDlx(pm, ["shadcn@latest", "init", "--no-monorepo"], appDir);
-  const config = await fs.readJson(join(appDir, "components.json"));
+  const config = (await fs.readJson(join(appDir, "components.json"))) as ShadcnConfig;
   config.tailwind = { ...config.tailwind, css: cssFile };
   return config;
 }
 
 export async function initShadcnSilent(
   appDir: string,
-  config: Record<string, unknown>,
+  config: ShadcnConfig,
   cssFile: string,
+  rsc: boolean,
   pm: PackageManager = "pnpm",
 ): Promise<void> {
-  const appConfig = { ...config, tailwind: { ...(config.tailwind as object), css: cssFile } };
+  const appConfig = projectShadcnConfig(config, {
+    rsc,
+    tailwindCss: cssFile,
+    aliases: appShadcnAliases,
+  });
   await fs.writeJson(join(appDir, "components.json"), appConfig, { spaces: 2 });
   await pmDlx(pm, ["shadcn@latest", "init", "--yes", "--no-monorepo", "--force"], appDir);
 }
@@ -265,32 +291,60 @@ async function moveThemeToGlobals(
   await fs.writeFile(appCssPath, newAppCss, "utf-8");
 }
 
-// Moves shadcn's sample button.tsx into packages/ui/src/ and re-exports it from the barrel.
-// Components belong in the shared package so all apps can import from @repo/ui.
-// useSrcDir=true when Next.js was scaffolded with --src-dir (button lands at src/components/)
-async function moveButtonToUi(
+// The shared package runs shadcn itself so generated source and primitive dependencies have
+// the same owner. Copying a component from an app leaves its Base/Radix/Aria dependency behind.
+export async function initializeSharedUi(
   appDir: string,
   projectDir: string,
+  config: ShadcnConfig,
+  pm: PackageManager,
   isVite: boolean,
   useSrcDir = false,
+  runShadcn = pmDlx,
+  reconcileDependencies = ensureSharedUiPrimitiveDependencies,
 ): Promise<void> {
-  const inSrc = isVite || useSrcDir;
-  const buttonSrc = join(appDir, inSrc ? "src/components/ui/button.tsx" : "components/ui/button.tsx");
-  if (!(await fs.pathExists(buttonSrc))) return;
+  const uiDir = join(projectDir, "packages/ui");
+  const appCssFile = isVite
+    ? "src/index.css"
+    : useSrcDir
+      ? "src/app/globals.css"
+      : "app/globals.css";
+  const appConfig = projectShadcnConfig(config, {
+    rsc: !isVite,
+    tailwindCss: appCssFile,
+    aliases: appShadcnAliases,
+  });
+  const uiConfig = projectShadcnConfig(config, {
+    rsc: false,
+    tailwindCss: "../tailwind-config/globals.css",
+    aliases: sharedUiShadcnAliases,
+  });
+  await fs.writeJson(join(appDir, "components.json"), appConfig, { spaces: 2 });
+  await fs.writeJson(join(uiDir, "components.json"), uiConfig, { spaces: 2 });
+  await runShadcn(
+    pm,
+    ["shadcn@latest", "add", "button", "--yes", "--overwrite"],
+    uiDir,
+  );
+  await reconcileDependencies(projectDir, pm);
 
-  let content = await fs.readFile(buttonSrc, "utf-8");
-  // @/lib/utils resolves differently per app; packages/ui always uses a relative import
-  content = content.replace(/@\/lib\/utils/g, "./utils");
+  const buttonPath = join(uiDir, "src/button.tsx");
+  if (await fs.pathExists(buttonPath)) {
+    const content = await fs.readFile(buttonPath, "utf-8");
+    const fixed = content
+      .replace(/from "src\/utils"/g, 'from "./utils"')
+      .replace(/from "@[^\"]*\/utils"/g, 'from "./utils"');
+    await fs.writeFile(buttonPath, fixed, "utf-8");
 
-  await fs.ensureDir(join(projectDir, "packages/ui/src"));
-  await fs.writeFile(join(projectDir, "packages/ui/src/button.tsx"), content, "utf-8");
-  await fs.remove(join(appDir, inSrc ? "src/components" : "components"));
-
-  const indexPath = join(projectDir, "packages/ui/src/index.ts");
-  const indexContent = await fs.readFile(indexPath, "utf-8");
-  if (!indexContent.includes("./button")) {
-    await fs.appendFile(indexPath, 'export * from "./button";\n');
+    const indexPath = join(uiDir, "src/index.ts");
+    const indexContent = await fs.readFile(indexPath, "utf-8");
+    if (!indexContent.includes("./button")) {
+      await fs.appendFile(indexPath, 'export * from "./button";\n');
+    }
   }
+
+  const inSrc = isVite || useSrcDir;
+  await fs.remove(join(appDir, inSrc ? "src/components/ui" : "components/ui"));
 }
 
 async function fixCssImport(cssPath: string, isVite: boolean): Promise<void> {
@@ -307,10 +361,10 @@ export async function initShadcnNext(
   options: {
     shared: boolean;
     useSrcDir?: boolean;
-    config?: Record<string, unknown>;
+    config?: ShadcnConfig;
     pm?: PackageManager;
   },
-): Promise<Record<string, unknown>> {
+): Promise<ShadcnConfig> {
   const pm = options.pm ?? "pnpm";
   const appDir = join(projectDir, "apps", appName);
   const cssFile = options.useSrcDir ? "src/app/globals.css" : "app/globals.css";
@@ -318,7 +372,7 @@ export async function initShadcnNext(
   const globalsCssPath = join(projectDir, "packages/tailwind-config/globals.css");
 
   if (options.config) {
-    await initShadcnSilent(appDir, options.config, cssFile, pm);
+    await initShadcnSilent(appDir, options.config, cssFile, true, pm);
     await fixCssImport(appCssPath, false);
     if (options.shared) {
       await moveThemeToGlobals(appCssPath, globalsCssPath, false);
@@ -331,7 +385,7 @@ export async function initShadcnNext(
 
   if (options.shared) {
     await moveThemeToGlobals(appCssPath, globalsCssPath, false);
-    await moveButtonToUi(appDir, projectDir, false, options.useSrcDir);
+    await initializeSharedUi(appDir, projectDir, result, pm, false, options.useSrcDir);
   }
 
   return result;
@@ -342,19 +396,18 @@ export async function initShadcnVite(
   appName: string,
   options: {
     shared: boolean;
-    config?: Record<string, unknown>;
-    sourceAppDir?: string;
+    config?: ShadcnConfig;
     pm?: PackageManager;
   },
-): Promise<Record<string, unknown>> {
+): Promise<ShadcnConfig> {
   const pm = options.pm ?? "pnpm";
   const appDir = join(projectDir, "apps", appName);
   const cssFile = "src/index.css";
   const appCssPath = join(appDir, cssFile);
   const globalsCssPath = join(projectDir, "packages/tailwind-config/globals.css");
 
-  if (options.shared && options.config && options.sourceAppDir) {
-    await silentInitVite(appDir, options.sourceAppDir, options.config, cssFile);
+  if (options.shared && options.config) {
+    await silentInitVite(appDir, projectDir, options.config, cssFile);
     return options.config;
   }
 
@@ -363,7 +416,7 @@ export async function initShadcnVite(
 
   if (options.shared) {
     await moveThemeToGlobals(appCssPath, globalsCssPath, true);
-    await moveButtonToUi(appDir, projectDir, true);
+    await initializeSharedUi(appDir, projectDir, result, pm, true);
   } else {
     // Per-app mode: shadcn keeps its own :root block — inject the font variable into it
     const css = await fs.readFile(appCssPath, "utf-8");
@@ -381,28 +434,22 @@ export async function initShadcnVite(
 // Theme already lives in globals.css at this point — just write imports and utils.
 async function silentInitVite(
   appDir: string,
-  sourceAppDir: string,
-  config: Record<string, unknown>,
+  projectDir: string,
+  config: ShadcnConfig,
   cssFile: string,
 ): Promise<void> {
   await fs.writeJson(
     join(appDir, "components.json"),
-    {
-      ...config,
-      tailwind: { ...(config.tailwind as object), css: cssFile },
-      aliases: {
-        components: "@/components",
-        utils: "@/lib/utils",
-        ui: "@/components/ui",
-        lib: "@/lib",
-        hooks: "@/hooks",
-      },
-    },
+    projectShadcnConfig(config, {
+      rsc: false,
+      tailwindCss: cssFile,
+      aliases: appShadcnAliases,
+    }),
     { spaces: 2 },
   );
 
   await fs.ensureDir(join(appDir, "src/lib"));
-  await fs.copy(join(sourceAppDir, "lib/utils.ts"), join(appDir, "src/lib/utils.ts"));
+  await fs.copy(join(projectDir, "packages/ui/src/utils.ts"), join(appDir, "src/lib/utils.ts"));
 
   await fs.writeFile(
     join(appDir, cssFile),
@@ -416,7 +463,7 @@ async function silentInitVite(
 export async function wireNextToSharedShadcn(
   projectDir: string,
   appName: string,
-  existingConfig: Record<string, unknown>,
+  existingConfig: ShadcnConfig,
   useSrcDir = false,
 ): Promise<void> {
   const appDir = join(projectDir, "apps", appName);
@@ -425,12 +472,17 @@ export async function wireNextToSharedShadcn(
 
   await fs.writeJson(
     join(appDir, "components.json"),
-    {
-      ...existingConfig,
-      tailwind: { ...(existingConfig.tailwind as object), css: cssFile },
-    },
+    projectShadcnConfig(existingConfig, {
+      rsc: true,
+      tailwindCss: cssFile,
+      aliases: appShadcnAliases,
+    }),
     { spaces: 2 },
   );
+
+  const appLibDir = join(appDir, useSrcDir ? "src/lib" : "lib");
+  await fs.ensureDir(appLibDir);
+  await fs.copy(join(projectDir, "packages/ui/src/utils.ts"), join(appLibDir, "utils.ts"));
 
   // shadcn and tw-animate-css must be in the app's deps for their CSS imports to resolve
   await mergeJson(projectDir, `apps/${appName}/package.json`, {
@@ -460,21 +512,17 @@ export async function wireViteToSharedShadcn(
   await fs.copy(join(projectDir, "packages/ui/src/utils.ts"), join(appDir, "src/lib/utils.ts"));
 
   // Read existing config from packages/ui so components.json is consistent
-  const uiConfig = await fs.readJson(join(projectDir, "packages/ui/components.json")).catch(() => null);
+  const uiConfig = (await fs
+    .readJson(join(projectDir, "packages/ui/components.json"))
+    .catch(() => null)) as ShadcnConfig | null;
   if (uiConfig) {
     await fs.writeJson(
       join(appDir, "components.json"),
-      {
-        ...uiConfig,
-        tailwind: { ...(uiConfig.tailwind as object), css: "src/index.css" },
-        aliases: {
-          components: "@/components",
-          utils: "@/lib/utils",
-          ui: "@/components/ui",
-          lib: "@/lib",
-          hooks: "@/hooks",
-        },
-      },
+      projectShadcnConfig(uiConfig, {
+        rsc: false,
+        tailwindCss: "src/index.css",
+        aliases: appShadcnAliases,
+      }),
       { spaces: 2 },
     );
   }

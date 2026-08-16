@@ -64,6 +64,7 @@ A project containing both supported app types follows this shape:
 ```text
 my-monorepo/
 ├── .git/                         # One repository for the whole monorepo
+├── .monokit.json                 # App shadcn ownership metadata
 ├── .vscode/
 │   └── settings.json             # Tailwind CSS editor configuration
 ├── apps/
@@ -125,11 +126,13 @@ Monokit does not force one component strategy. You choose the mode when creating
 
 | Mode | Where components live | Best suited for |
 | --- | --- | --- |
-| Shared design system | `packages/ui` | Reusable components consumed by multiple apps through `@repo/ui` |
+| Shared design system | `packages/ui` | One synchronized design consumed by multiple apps through `@repo/ui` |
 | Per app | Inside each selected app | Components that belong to one app or need independent configuration |
 | No shadcn | No app-level shadcn initialization | Projects that only need the generated workspace and Tailwind setup |
 
-The `packages/ui` workspace shell and its configuration files are generated in every project, even when you choose no shadcn initialization. Choosing **No shadcn** means Monokit skips the interactive shadcn setup for the apps.
+The `packages/ui` workspace shell is generated in every project. Its `components.json` is created only when the shared design system is initialized. Choosing **No shadcn** skips shadcn initialization; choosing **Per app** keeps each app's `components.json`, components, and primitive dependencies independent.
+
+In shared mode, `packages/ui/components.json` is the canonical design configuration. The selected style—including Base UI, Radix, React Aria, or another style supported by the installed shadcn CLI—is projected into every shared app while keeping each workspace's aliases, CSS path, and `rsc` value local. Shared component source and its primitive dependencies belong to `packages/ui`.
 
 ### Add components
 
@@ -143,6 +146,7 @@ Monokit delegates component generation to `shadcn@latest` in the selected worksp
 
 - For a shared component, Monokit runs shadcn in `packages/ui`, normalizes imports in the expected `packages/ui/src/<component>.tsx` entry file, and exports that file from `packages/ui/src/index.ts`.
 - For an app component, Monokit runs shadcn inside that app and leaves the generated component there.
+- Before a shared operation, Monokit checks `.monokit.json` and verifies that every shared app still matches the canonical design. Drift stops generation and points to `monokit upgrade --check`.
 
 The destination must already have a usable `components.json`. Apps created with the shared or per-app shadcn modes are configured for this; an app created with **No shadcn** may need shadcn initialization before app-local components can be added.
 
@@ -301,17 +305,18 @@ Packages
 Audit the generated monorepo structure and configuration.
 
 ```bash
-monokit doctor           # audit and offer available fixes interactively
+monokit doctor           # read-only workspace audit
 monokit doctor --fix     # audit and apply supported fixes without asking
 monokit doctor --types   # audit and run tsc --noEmit in every detected app
 ```
 
 The audit checks:
 
-- Root `package.json`, package-manager metadata, workspace configuration, `turbo.json`, `.gitignore`, and `.prettierrc`
+- Root `package.json`, `.monokit.json`, package-manager metadata, workspace configuration, `turbo.json`, `.gitignore`, and `.prettierrc`
 - Root `dev:<app>` and `build:<app>` scripts
 - `packages/ui` metadata, TypeScript config, shadcn config, barrel file, and `cn()` helper
 - Shared component import paths and barrel exports
+- Shared shadcn design drift, mixed or conflicting primitive imports, and missing primitive dependencies
 - Shared Tailwind, TypeScript, and ESLint package files
 - App scripts, `@repo/*` dependencies, ESLint configuration, shared CSS import, and configured port
 - Per-app TypeScript compilation when `--types` is passed
@@ -322,6 +327,21 @@ Supported automatic fixes are intentionally limited to:
 - Adding missing shared-component exports to `packages/ui/src/index.ts`
 
 The command exits with a non-zero status when failures remain.
+
+### `monokit upgrade`
+
+Inspect or apply versioned Monokit project migrations. This is separate from `monokit update`, which updates npm dependencies.
+
+```bash
+monokit upgrade --check  # print a read-only plan; never changes files
+monokit upgrade          # preview and confirm an available project repair
+```
+
+For legacy shadcn projects, the upgrade command inspects app and shared configurations, primitive imports, package ownership, and Git state. Safe metadata/configuration repairs preserve workspace-specific aliases, CSS paths, and `rsc` values.
+
+If shared component source uses a different primitive from the intended style, Monokit treats it as a component migration. It requires a clean Git working tree, runs shadcn dry-run checks against a temporary copy, lists the affected components, defaults overwrite confirmation to **No**, regenerates approved components from `packages/ui`, and runs the project typecheck. Monokit does not stage or commit the result.
+
+When legacy app ownership cannot be inferred safely, apply mode asks whether each app is shared, per-app, or has no shadcn setup. Check mode remains fully read-only.
 
 ### Global options
 
@@ -346,6 +366,15 @@ monokit --version
 ```
 
 Upgrading the global CLI does not automatically modify an existing generated monorepo. Changes happen only when you run a management command that performs them.
+
+After updating the CLI, inspect an existing repository with:
+
+```bash
+cd your-monorepo
+monokit upgrade --check
+```
+
+Run `monokit upgrade` only after reviewing that plan and committing or otherwise protecting your current work.
 
 If you must remain on Node.js 18, reinstall the final compatible legacy CLI:
 

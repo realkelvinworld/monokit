@@ -24,7 +24,6 @@ export const uiPackageJson = (workspaceDep: string) => ({
   dependencies: {
     "class-variance-authority": "^0.7.1",
     clsx: "^2.1.1",
-    "radix-ui": "^1.4.3",
     react: "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwind-merge": "^3.6.0",
@@ -47,28 +46,6 @@ export function cn(...inputs: ClassValue[]) {
 
 export const uiIndex = `export { cn } from "./utils";
 `;
-
-export const uiComponentsJson = {
-  $schema: "https://ui.shadcn.com/schema.json",
-  style: "new-york",
-  rsc: false,
-  tsx: true,
-  tailwind: {
-    config: "",
-    css: "",
-    baseColor: "zinc",
-    cssVariables: true,
-    prefix: "",
-  },
-  iconLibrary: "lucide",
-  aliases: {
-    components: "src",
-    utils: "src/utils",
-    ui: "src",
-    lib: "src",
-    hooks: "src/hooks",
-  },
-};
 
 export const uiTsConfig = {
   extends: "@repo/typescript-config/react-library.json",

@@ -50,3 +50,12 @@ export async function removeGeneratedAppGitMetadata(
   const appDir = resolveGeneratedAppDirectory(projectDir, appName);
   await fs.remove(join(appDir, ".git"));
 }
+
+export async function isGitWorkingTreeClean(projectDir: string): Promise<boolean> {
+  try {
+    const { stdout } = await execa("git", ["status", "--porcelain=v1"], { cwd: projectDir });
+    return stdout.trim().length === 0;
+  } catch {
+    return false;
+  }
+}

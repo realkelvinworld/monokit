@@ -1,7 +1,7 @@
-import { join } from "path";
 import * as p from "@clack/prompts";
 import fs from "fs-extra";
 import pc from "picocolors";
+import { join } from "path";
 
 import {
   addWorkspaceDeps,
@@ -17,23 +17,21 @@ import {
 import { detectProjectPackageManager, pmInstall, type PackageManager } from "./utils/pm.js";
 import { mergeJson } from "./utils/files.js";
 import { getWorkspaceNameError } from "./utils/workspace-name.js";
+import { setAppShadcnMode } from "./utils/monokit-config.js";
+import { readMonokitConfig } from "./utils/monokit-config.js";
+import { type ShadcnConfig } from "./utils/shadcn-config.js";
 
 type ShadcnMode = "shared" | "per-app" | "no";
 
-async function findExistingAppConfig(cwd: string): Promise<Record<string, unknown> | null> {
-  const appsDir = join(cwd, "apps");
-  const entries = await fs.readdir(appsDir).catch(() => [] as string[]);
-  for (const entry of entries) {
-    const configPath = join(appsDir, entry, "components.json");
-    if (await fs.pathExists(configPath)) {
-      return fs.readJson(configPath);
-    }
-  }
-  return null;
-}
-
 export async function add(cwd: string): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" create-monokit — add ")));
+
+  if (!(await readMonokitConfig(cwd))) {
+    p.cancel(
+      "Monokit ownership metadata is missing. Run monokit upgrade before adding another app.",
+    );
+    process.exit(1);
+  }
 
   const onCancel = () => {
     p.cancel("Cancelled.");
@@ -102,20 +100,16 @@ export async function add(cwd: string): Promise<void> {
   s.stop("Dependencies installed");
 
   // Detect whether the monorepo already has a shared shadcn setup
-  const globalsCss = await fs.readFile(join(cwd, "packages/tailwind-config/globals.css"), "utf-8").catch(() => "");
-  const sharedAlreadySetUp = globalsCss.includes(":root {");
+  const sharedConfig = (await fs
+    .readJson(join(cwd, "packages/ui/components.json"))
+    .catch(() => null)) as ShadcnConfig | null;
+  const sharedAlreadySetUp = sharedConfig !== null;
 
   if (options.type === "next") {
     if (shadcnMode === "shared" && sharedAlreadySetUp) {
-      const existingConfig = await findExistingAppConfig(cwd);
-      if (existingConfig) {
-        s.start("Wiring shadcn/ui from shared packages");
-        await wireNextToSharedShadcn(cwd, appName, existingConfig, useSrcDir);
-        s.stop("shadcn/ui wired");
-      } else {
-        p.log.step(`Setting up shadcn/ui for apps/${appName} — choose your style and color:`);
-        await initShadcnNext(cwd, appName, { shared: true, useSrcDir, pm });
-      }
+      s.start("Wiring shadcn/ui from shared packages");
+      await wireNextToSharedShadcn(cwd, appName, sharedConfig, useSrcDir);
+      s.stop("shadcn/ui wired");
     } else if (shadcnMode !== "no") {
       p.log.step(`Setting up shadcn/ui for apps/${appName} — choose your style and color:`);
       await initShadcnNext(cwd, appName, { shared: shadcnMode === "shared", useSrcDir, pm });
@@ -148,6 +142,7 @@ export async function add(cwd: string): Promise<void> {
   });
   await pmInstall(pm, cwd);
   s.stop("Workspace packages linked");
+  await setAppShadcnMode(cwd, appName, shadcnMode === "no" ? "none" : shadcnMode);
 
   const runCmd = pm === "npm" ? "npm run" : pm;
   p.log.success(`apps/${appName} ready`);
