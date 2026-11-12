@@ -9,6 +9,7 @@ import {
   projectShadcnConfig,
 } from "./shadcn-config.js";
 import { ensureSharedUiPrimitiveDependencies } from "./shadcn-dependencies.js";
+import { VITEST_DEV_DEPENDENCIES, writeVitestSetup } from "./vitest.js";
 
 const appShadcnAliases = {
   components: "@/components",
@@ -53,6 +54,7 @@ export async function scaffoldNextApp(
   useSrcDir = false,
   pm: PackageManager = "pnpm",
   port = 3000,
+  withTesting = false,
 ): Promise<void> {
   await assertGeneratedAppTargetAvailable(projectDir, appName);
 
@@ -72,10 +74,18 @@ export async function scaffoldNextApp(
     scripts: {
       dev: `next dev --turbo --port ${port}`,
       lint: "next lint",
+      ...(withTesting
+        ? {
+            test: "vitest run",
+            "test:coverage": "vitest run --coverage",
+            "test:watch": "vitest",
+          }
+        : {}),
       "check-types": "tsc --noEmit",
     },
     devDependencies: {
       "@eslint/eslintrc": "^3.0.0",
+      ...(withTesting ? VITEST_DEV_DEPENDENCIES : {}),
     },
   });
 
@@ -99,6 +109,8 @@ export default [
 ];
 `,
   );
+
+  if (withTesting) await writeVitestSetup(join(projectDir, "apps", appName));
 }
 
 export async function scaffoldViteApp(
@@ -106,6 +118,7 @@ export async function scaffoldViteApp(
   appName: string,
   pm: PackageManager = "pnpm",
   port = 3001,
+  withTesting = true,
 ): Promise<void> {
   await assertGeneratedAppTargetAvailable(projectDir, appName);
 
@@ -122,8 +135,13 @@ export async function scaffoldViteApp(
   await mergeJson(projectDir, `apps/${appName}/package.json`, {
     scripts: {
       lint: "eslint .",
-      test: "vitest run",
-      "test:watch": "vitest",
+      ...(withTesting
+        ? {
+            test: "vitest run",
+            "test:coverage": "vitest run --coverage",
+            "test:watch": "vitest",
+          }
+        : {}),
       "check-types": "tsc --noEmit",
     },
     dependencies: {
@@ -136,37 +154,9 @@ export async function scaffoldViteApp(
     devDependencies: {
       "@tailwindcss/vite": "^4.3.0",
       tailwindcss: "^4",
-      vitest: "^3.0.0",
-      "@testing-library/react": "^16.0.0",
-      "@testing-library/jest-dom": "^6.0.0",
-      "@vitejs/plugin-react": "^5.0.0",
+      ...(withTesting ? VITEST_DEV_DEPENDENCIES : {}),
     },
   });
-
-  await writeFile(
-    projectDir,
-    `apps/${appName}/vitest.config.ts`,
-    `import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: ["./src/test/setup.ts"],
-  },
-});
-`,
-  );
-
-  await writeFile(
-    projectDir,
-    `apps/${appName}/src/test/setup.ts`,
-    `import "@testing-library/jest-dom";\n`,
-  );
-
 
   await writeFile(
     projectDir,
@@ -220,6 +210,8 @@ export default reactLibraryConfig;
     files: [],
     references: [{ path: "./tsconfig.app.json" }, { path: "./tsconfig.node.json" }],
   });
+
+  if (withTesting) await writeVitestSetup(join(projectDir, "apps", appName));
 }
 
 // Runs shadcn init interactively — user picks library/preset once.

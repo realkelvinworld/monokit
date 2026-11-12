@@ -22,7 +22,8 @@ const DEV_PACKAGES = new Set([
   "rollup", "webpack", "parcel", "jest", "vitest", "playwright", "cypress",
   "tailwindcss", "postcss", "autoprefixer", "husky", "lint-staged", "cross-env",
   "prettier-plugin-tailwindcss", "@vitejs/plugin-react", "@vitejs/plugin-react-swc",
-  "eslint-config-next",
+  "eslint-config-next", "@playwright/test", "@testing-library/react",
+  "@testing-library/jest-dom", "@vitest/coverage-v8", "vite-tsconfig-paths",
 ]);
 
 function inferDepType(pkg: string, isRoot: boolean): "dev" | "dep" {

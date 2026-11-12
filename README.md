@@ -35,6 +35,7 @@ The interactive setup asks you to choose:
 - A project name
 - Next.js, Vite + React, or both
 - App names and whether Next.js should use a `src/` directory
+- Whether to include unit testing in each app
 - Shared shadcn/ui, per-app shadcn/ui, or no shadcn initialization
 
 Monokit then creates the workspace, installs dependencies, wires the apps to the shared packages, and initializes one root Git repository.
@@ -50,6 +51,7 @@ If you run the `monokit-cli` launcher from an existing Monokit repository, it op
 | shadcn/ui | Shared design system, per-app setup, or no initialization |
 | Components | Add or remove a component from `packages/ui` or a selected app |
 | Dependencies | Install, uninstall, or update packages in the root, `packages/ui`, or a selected app |
+| Testing | Optional per-app Vitest setup and app-aware Playwright workflows |
 | Package managers | pnpm, npm, yarn, and Bun |
 | Git | One root repository on `main`; no automatic staging, commit, remote, or push |
 | Health checks | Workspace, configuration, component, app, and optional TypeScript checks |
@@ -92,7 +94,7 @@ pnpm build:dashboard
 pnpm check-types
 ```
 
-Vite apps also receive Vitest, Testing Library, a test setup file, and `test`/`test:watch` scripts. Next.js apps receive App Router, Turbopack, TypeScript, ESLint, and Tailwind through `create-next-app@latest`.
+When testing is selected, Next.js and Vite apps receive Vitest, Testing Library, setup and starter test files, coverage support, and test scripts. Declining testing leaves those files and dependencies out of that app.
 
 ### Port behavior
 
@@ -119,6 +121,89 @@ git init -b main
 It prevents generated apps from keeping their own nested Git repositories, so the complete monorepo is tracked from the root. Monokit does **not** run `git add`, create a commit, configure a remote, or push code. Generated files remain unstaged for you to review.
 
 If Git initialization fails, scaffolding continues with a warning and tells you to run `git init -b main` from the project root.
+
+## Testing workflows
+
+Testing is optional per app. New repositories ask separately for each selected app, while `monokit app` asks once for the app being added. Both prompts default to **Yes**.
+
+### Unit tests with Vitest
+
+Selecting testing during app creation prepares the app with:
+
+- `vitest.config.ts` using jsdom, Testing Library, TypeScript path aliases, and V8 coverage
+- `src/test/setup.ts` and `src/test/example.test.ts` when the app has a `src/` directory
+- `test/setup.ts` and `test/example.test.ts` when it does not
+- `test`, `test:watch`, and `test:coverage` package scripts
+- matching `vitest` and `@vitest/coverage-v8` version ranges
+
+Run one workspace or the complete monorepo from the repository root:
+
+```bash
+monokit test --app web
+monokit test --shared
+monokit test --all
+```
+
+Use `init` when testing was declined during creation, when configuring `packages/ui`, or when repairing an older Monokit app that has Vitest configuration but no test files:
+
+```bash
+monokit test init --app web
+monokit test init --shared
+```
+
+Monokit preserves an existing test command or Vitest configuration instead of replacing it. For an existing Vitest setup, `test init` ensures the Vitest runner and standard test scripts are present and adds a starter test only when no unit tests exist. If Vitest coverage is already installed on a different version line, it is aligned with that workspace's Vitest version.
+
+Unit-test runs use the repository's local Turbo binary, so workspace scheduling and caching stay in Turbo. Test files may use Vitest's standard `*.test.*` or `*.spec.*` names. Pass runner arguments after `--`:
+
+```bash
+monokit test --app web -- --watch
+monokit test --app web -- --coverage
+```
+
+### Browser tests with Playwright
+
+Playwright setup is app-specific:
+
+```bash
+monokit e2e init --app web
+```
+
+For an app without Playwright configuration, Monokit:
+
+- installs `@playwright/test` in that app
+- detects its Next.js or Vite development port
+- creates `playwright.config.ts` with a `localhost` web server and Chromium project
+- creates `tests/e2e/home.e2e.ts` as a passing smoke test
+- installs the Chromium browser runtime
+- adds `e2e`, `e2e:ui`, and `e2e:report` scripts
+- ignores Playwright reports and test output at the monorepo root
+
+The generated Playwright configuration starts the selected app automatically, reuses an existing local server outside CI, and matches `tests/e2e/*.e2e.ts`. The generated Vitest configuration excludes `tests/e2e/**`, keeping unit and browser tests separate.
+
+Run browser tests from the repository root:
+
+```bash
+monokit e2e --app web
+monokit e2e --app web -- --ui
+```
+
+The default setup installs Chromium only. Add Firefox, WebKit, mobile devices, authentication, or other Playwright projects directly in the app's Playwright configuration when needed. If the app already has a Playwright config, Monokit preserves it, ensures `@playwright/test` and the package scripts are present, and leaves browser installation under that config's control.
+
+Existing Playwright configs are never rewritten. If a config generated before Monokit 0.4.0 uses `http://127.0.0.1:<port>` and Next.js reports a development cross-origin warning, change both the `use.baseURL` and `webServer.url` values to `http://localhost:<port>`.
+
+### Add testing to an existing Monokit repository
+
+Updating the global CLI does not change existing apps automatically. Upgrade the CLI, then initialize only the workspaces that need testing:
+
+```bash
+npm install -g monokit-cli@latest
+
+cd your-monorepo
+monokit test init --app web
+monokit e2e init --app web
+```
+
+Review the generated files before committing them. Neither command stages or commits project changes.
 
 ## shadcn/ui workflows
 
@@ -207,7 +292,7 @@ Run management commands from the monorepo root. Monokit detects a repository by 
 
 Add one Next.js or Vite app to the current monorepo.
 
-The command asks for the framework, app name, optional Next.js `src/` directory, and shadcn mode. It then scaffolds the app, installs dependencies, links the shared workspace packages, and adds `dev:<app>` and `build:<app>` scripts to the root `package.json`.
+The command asks for the framework, app name, optional Next.js `src/` directory, unit testing, and shadcn mode. Testing defaults to Yes but can be declined for each app. The command then scaffolds the app, installs dependencies, links the shared workspace packages, and adds `dev:<app>` and `build:<app>` scripts to the root `package.json`.
 
 ```bash
 monokit app
@@ -299,6 +384,32 @@ Packages
   ├── @repo/typescript-config  v0.0.0
   └── @repo/ui                 v0.0.0
 ```
+
+### `monokit test`
+
+Configure or run Vitest in one workspace. Apps created with testing selected are ready immediately; use `init` for shared UI, an app created without testing, or an older app without test configuration.
+
+```bash
+monokit test init --app web
+monokit test init --shared
+monokit test --app web
+monokit test --shared
+monokit test --all
+```
+
+See [Testing workflows](#testing-workflows) for generated files, coverage, preservation rules, and existing-project setup.
+
+### `monokit e2e`
+
+Configure or run Playwright for one app.
+
+```bash
+monokit e2e init --app web
+monokit e2e --app web
+monokit e2e --app web -- --ui
+```
+
+See [Browser tests with Playwright](#browser-tests-with-playwright) for generated files, browser installation, app-server behavior, and extension points.
 
 ### `monokit doctor`
 

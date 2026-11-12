@@ -85,6 +85,10 @@ export async function scaffold(cwd: string): Promise<void> {
         if (!(results.apps as string[])?.includes("next")) return;
         return p.confirm({ message: "Use src/ directory for Next.js?", initialValue: false });
       },
+      nextTesting: ({ results }) => {
+        if (!(results.apps as string[])?.includes("next")) return;
+        return p.confirm({ message: "Include testing in the Next.js app?", initialValue: true });
+      },
       viteName: ({ results }) => {
         if (!(results.apps as string[])?.includes("vite")) return;
         return p.text({
@@ -92,6 +96,10 @@ export async function scaffold(cwd: string): Promise<void> {
           placeholder: "dashboard",
           validate: getWorkspaceNameError,
         });
+      },
+      viteTesting: ({ results }) => {
+        if (!(results.apps as string[])?.includes("vite")) return;
+        return p.confirm({ message: "Include testing in the Vite app?", initialValue: true });
       },
       shadcn: () =>
         p.select({
@@ -121,10 +129,14 @@ export async function scaffold(cwd: string): Promise<void> {
   const useSrcDir = (options.nextSrcDir as boolean | undefined) ?? false;
   const nextAppName = (options.nextName as string | undefined) ?? "web";
   const viteAppName = (options.viteName as string | undefined) ?? "dashboard";
+  const nextTesting = (options.nextTesting as boolean | undefined) ?? true;
+  const viteTesting = (options.viteTesting as boolean | undefined) ?? true;
 
   const appLines = apps.map((app) => {
-    if (app === "next") return `Next.js  → apps/${nextAppName}  (${useSrcDir ? "src/app/" : "app/"})`;
-    return `Vite     → apps/${viteAppName}`;
+    if (app === "next") {
+      return `Next.js  → apps/${nextAppName}  (${useSrcDir ? "src/app/" : "app/"})  · testing ${nextTesting ? "yes" : "no"}`;
+    }
+    return `Vite     → apps/${viteAppName}  · testing ${viteTesting ? "yes" : "no"}`;
   });
 
   const shadcnLabel: Record<ShadcnMode, string> = {
@@ -200,13 +212,19 @@ export async function scaffold(cwd: string): Promise<void> {
 
   if (apps.includes("next")) {
     s.start(`Scaffolding Next.js app → apps/${nextAppName}`);
-    await scaffoldNextApp(projectDir, nextAppName, useSrcDir, pm, 3000);
+    await scaffoldNextApp(projectDir, nextAppName, useSrcDir, pm, 3000, nextTesting);
     s.stop(`Next.js app scaffolded → apps/${nextAppName}`);
   }
 
   if (apps.includes("vite")) {
     s.start(`Scaffolding Vite app → apps/${viteAppName}`);
-    await scaffoldViteApp(projectDir, viteAppName, pm, apps.includes("next") ? 3001 : 3000);
+    await scaffoldViteApp(
+      projectDir,
+      viteAppName,
+      pm,
+      apps.includes("next") ? 3001 : 3000,
+      viteTesting,
+    );
     s.stop(`Vite app scaffolded → apps/${viteAppName}`);
   }
 

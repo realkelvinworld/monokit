@@ -1,6 +1,7 @@
 import { execa } from "execa";
 import fs from "fs-extra";
-import { join } from "path";
+import { join, relative } from "path";
+
 import { run, runNonInteractive } from "./exec.js";
 
 export type PackageManager = "pnpm" | "npm" | "yarn" | "bun";
@@ -99,4 +100,71 @@ export function workspaceDep(pm: PackageManager): string {
 
 export function pmRunScript(pm: PackageManager): string {
   return pm === "npm" ? "npm run" : pm;
+}
+
+export function pmScriptCommand(
+  pm: PackageManager,
+  script: string,
+  args: string[] = [],
+): { command: string; args: string[] } {
+  if (pm === "npm" || pm === "pnpm" || pm === "bun") {
+    return {
+      command: pm,
+      args: ["run", script, ...(args.length > 0 ? ["--", ...args] : [])],
+    };
+  }
+
+  return { command: "yarn", args: ["run", script, ...args] };
+}
+
+export function pmBinaryCommand(
+  pm: PackageManager,
+  binary: string,
+  args: string[] = [],
+): { command: string; args: string[] } {
+  if (pm === "pnpm") return { command: "pnpm", args: ["exec", binary, ...args] };
+  if (pm === "bun") return { command: "bunx", args: [binary, ...args] };
+  if (pm === "yarn") return { command: "yarn", args: [binary, ...args] };
+  return { command: "npm", args: ["exec", "--", binary, ...args] };
+}
+
+export async function pmAddWorkspaceDevDependencies(
+  pm: PackageManager,
+  packages: string[],
+  targetDir: string,
+  projectDir: string,
+): Promise<void> {
+  if (packages.length === 0) return;
+
+  if (pm === "pnpm") {
+    await run(
+      "pnpm",
+      ["add", "-D", ...packages, `--filter=./${relative(projectDir, targetDir)}`],
+      projectDir,
+    );
+    return;
+  }
+
+  if (pm === "bun") {
+    await run("bun", ["add", "-D", ...packages], targetDir);
+    return;
+  }
+
+  if (pm === "yarn") {
+    const pkg = await fs.readJson(join(targetDir, "package.json"));
+    const workspaceName = pkg.name as string | undefined;
+    if (!workspaceName) {
+      throw new Error(
+        `Missing package name in ${relative(projectDir, targetDir)}/package.json.`,
+      );
+    }
+    await run("yarn", ["workspace", workspaceName, "add", "-D", ...packages], projectDir);
+    return;
+  }
+
+  await run(
+    "npm",
+    ["install", "-D", ...packages, "-w", relative(projectDir, targetDir)],
+    projectDir,
+  );
 }
