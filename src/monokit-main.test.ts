@@ -7,6 +7,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 describe("Monokit CLI guidance", () => {
+  it("shows the testing commands in help", () => {
+    const entryPath = fileURLToPath(new URL("./monokit.ts", import.meta.url));
+    const tsxCliPath = fileURLToPath(import.meta.resolve("tsx/cli"));
+    const result = spawnSync(process.execPath, [tsxCliPath, entryPath, "--help"], {
+      encoding: "utf-8",
+    });
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /test.*Configure or run unit tests/);
+    assert.match(result.stdout, /e2e.*Configure or run browser tests/);
+  });
+
   it("shows the published scaffold command outside a monorepo", () => {
     const cwd = mkdtempSync(join(tmpdir(), "monokit-outside-repo-"));
     const entryPath = fileURLToPath(new URL("./monokit.ts", import.meta.url));

@@ -6,9 +6,11 @@ import pc from "picocolors";
 import { add } from "./add.js";
 import { addComponent } from "./add-component.js";
 import { doctor } from "./doctor.js";
+import { e2eCommand } from "./e2e-command.js";
 import { install } from "./install.js";
 import { list } from "./list.js";
 import { removeComponent } from "./remove-component.js";
+import { testCommand } from "./test-command.js";
 import { uninstall } from "./uninstall.js";
 import { update } from "./update.js";
 import { upgrade } from "./upgrade.js";
@@ -39,6 +41,8 @@ ${pc.bold("Commands")}
   ${pc.cyan("uninstall")} [package]      Remove an npm package from any workspace
   ${pc.cyan("update")} [package]         Update an npm package to latest (or a specific version)
   ${pc.cyan("upgrade")}                  Upgrade Monokit project structure (--check for a read-only plan)
+  ${pc.cyan("test")} [init]              Configure or run unit tests
+  ${pc.cyan("e2e")} [init]               Configure or run browser tests
   ${pc.cyan("list")}                     List all apps and packages in the monorepo
   ${pc.cyan("doctor")}                   Check monorepo health (--fix to auto-fix, --types for TypeScript)
 
@@ -55,6 +59,9 @@ ${pc.bold("Examples")}
   ${pc.dim("$")} monokit update zod
   ${pc.dim("$")} monokit update zod@3.22.0
   ${pc.dim("$")} monokit upgrade --check
+  ${pc.dim("$")} monokit test --app web
+  ${pc.dim("$")} monokit test --all
+  ${pc.dim("$")} monokit e2e --app web
   ${pc.dim("$")} monokit list
   ${pc.dim("$")} monokit doctor --fix
   ${pc.dim("$")} monokit doctor --types
@@ -115,6 +122,16 @@ export async function runMonokit(): Promise<void> {
 
   if (command === "upgrade") {
     await upgrade(cwd, { check: rest.includes("--check") });
+    return;
+  }
+
+  if (command === "test") {
+    await testCommand(cwd, rest);
+    return;
+  }
+
+  if (command === "e2e") {
+    await e2eCommand(cwd, rest);
     return;
   }
 

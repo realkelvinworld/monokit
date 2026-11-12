@@ -58,6 +58,8 @@ export async function add(cwd: string): Promise<void> {
         if (results.type !== "next") return;
         return p.confirm({ message: "Use src/ directory?", initialValue: false });
       },
+      testing: () =>
+        p.confirm({ message: "Include unit testing?", initialValue: true }),
       shadcn: () =>
         p.select({
           message: "Add shadcn/ui?",
@@ -84,14 +86,15 @@ export async function add(cwd: string): Promise<void> {
   const appName = options.appName as string;
   const shadcnMode = options.shadcn as ShadcnMode;
   const useSrcDir = (options.nextSrcDir as boolean | undefined) ?? false;
+  const withTesting = (options.testing as boolean | undefined) ?? true;
 
   if (options.type === "next") {
     s.start(`Scaffolding Next.js app → apps/${appName}`);
-    await scaffoldNextApp(cwd, appName, useSrcDir, pm);
+    await scaffoldNextApp(cwd, appName, useSrcDir, pm, 3000, withTesting);
     s.stop(`Next.js app scaffolded → apps/${appName}`);
   } else {
     s.start(`Scaffolding Vite app → apps/${appName}`);
-    await scaffoldViteApp(cwd, appName, pm);
+    await scaffoldViteApp(cwd, appName, pm, 3001, withTesting);
     s.stop(`Vite app scaffolded → apps/${appName}`);
   }
 
